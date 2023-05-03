@@ -11,7 +11,7 @@ from . import logger
 from .scanners import NavVis
 from .scanners.navvis.camera_tiles import TileFormat
 from .capture import (
-        Capture, Session, Sensors, create_sensor, Trajectories, Pose,
+        Capture, Session, Sensors, create_sensor, Trajectories, Rigs, Pose,
         RecordsCamera, RecordsLidar, RecordBluetooth, RecordBluetoothSignal,
         RecordsBluetooth, RecordWifi, RecordWifiSignal, RecordsWifi)
 from .utils.misc import add_bool_arg
@@ -25,6 +25,22 @@ def compute_downsampling_size(size: Tuple[int], max_edge: int):
     new_size = tuple([int(round(edge * scale)) for edge in size])
     return new_size
 
+def get_pose(nv: NavVis, frame_id: int, camera_id: Optional[int] = 0, tile_id: Optional[int] = 0):
+    qvec, tvec = nv.get_pose(frame_id, camera_id, tile_id)
+    return Pose(r=qvec, t=tvec)
+
+def fix_vlx_extrinsics(pose: Pose):
+    # Camera 0 is (physically) mounted upside down on VLX.
+    # Intrinsics stay the same since they are the image center.
+    # Extrinsics should be rotated by 180 deg counter-clockwise around z.
+    fix_matrix = np.array([
+        [-1,  0,  0],
+        [ 0, -1,  0],
+        [ 0,  0,  1]
+    ])
+    new_rotmat = pose.r.as_matrix() @ fix_matrix
+    pose = Pose(r=new_rotmat, t=pose.t)
+    return pose
 
 def run(input_path: Path, capture: Capture, tiles_format: str, session_id: Optional[str] = None,
         downsample_max_edge: int = None, upright: bool = True, copy_pointcloud: bool = False):
@@ -35,8 +51,14 @@ def run(input_path: Path, capture: Capture, tiles_format: str, session_id: Optio
 
     output_path = capture.data_path(session_id)
     nv = NavVis(input_path, output_path, tiles_format, upright)
+
+    frame_ids = nv.get_frame_ids()
+    camera_ids = nv.get_camera_ids()
     tiles = nv.get_tiles()
-    num_tiles = len(tiles.angles)
+
+    num_frames = len(frame_ids)
+    num_cameras = len(camera_ids)
+    num_tiles = nv.get_num_tiles()
 
     K = nv.get_camera_intrinsics()
     fx, fy, cx, cy = K[[0, 1, 0, 1], [0, 1, 2, 2]]
@@ -58,39 +80,59 @@ def run(input_path: Path, capture: Capture, tiles_format: str, session_id: Optio
     sensors = Sensors()
     trajectory = Trajectories()
     images = RecordsCamera()
-    rigs = None  # TODO: check if relative poses are identical for all frames
-    for camera_id in nv.get_camera_ids():
+    rigs = Rigs()
+
+    # frame_ids are the IDs of the valid frames, so it's not necessarily
+    # sequential and starting from `0`. Also, this code assumes NavVis produces
+    # consistent rigs across all frames, with `cam_id=0` as the rig base.
+    frame_id_0  = frame_ids[0]
+    camera_id_0 = 0
+    tile_id_0   = 0
+
+    world_from_rig = fix_vlx_extrinsics(get_pose(nv, frame_id_0, camera_id_0, tile_id_0))
+    rig_from_world = world_from_rig.inverse()
+
+    # Create Rig.
+    rig_id = "navvis_rig"
+    for camera_id in camera_ids:
         for tile_id in range(num_tiles):
             sensor_id = f'{camera_id}_{tiles_format}'
-            if num_tiles > 1:
-                sensor_id += f'-{tile_id}'
+            sensor_id += f'-{tile_id}' if num_tiles > 1 else ''
             sensor = create_sensor(
                 'camera', sensor_params=camera_params,
                 name=f'NavVis {device} camera-{camera_id} tile-{tiles_format} id-{tile_id}')
             sensors[sensor_id] = sensor
 
-            for frame_id in nv.get_frame_ids():
-                if not nv.get_frame_valid(frame_id):
-                    if tile_id == 0:
-                        logging.warning('Invalid frame %d.', frame_id)
-                    continue
-                qvec, tvec = nv.get_pose(frame_id, camera_id, tile_id)
-                pose = Pose(r=qvec, t=tvec)
-                if upright and device == 'VLX' and camera_id == 'cam0':
-                    # Camera 0 is (physically) mounted upside down on VLX.
-                    # Intrinsics stay the same since they are the image center.
-                    # Extrinsics should be rotated by 180 deg counter-clockwise around z.
-                    fix_matrix = np.array([
-                        [-1, 0, 0],
-                        [0, -1, 0],
-                        [0, 0, 1]
-                    ])
-                    new_rotmat = pose.r.as_matrix() @ fix_matrix
-                    pose = Pose(r=new_rotmat, t=tvec)
-                time_s = nv.get_frame_timestamp(frame_id)
-                timestamp_us = int(round(time_s * 1_000_000))
-                trajectory[timestamp_us, sensor_id] = pose
+            world_from_cam = get_pose(nv, frame_id_0, camera_id, tile_id)
+            if device == 'VLX' and camera_id == 'cam0':
+                world_from_cam = fix_vlx_extrinsics(world_from_cam)
+            rig_from_cam = rig_from_world * world_from_cam
+            rigs[rig_id, sensor_id] = rig_from_cam
 
+    # Process frames (enumerate is needed since frame_id is not sequential).
+    for frame_idx, frame_id in enumerate(frame_ids):
+        if not nv.get_frame_valid(frame_id):
+            if tile_id == 0:
+                logging.warning('Invalid frame %d.', frame_id)
+            continue
+        pose = get_pose(nv, frame_id, camera_id=0)
+        time_s = nv.get_frame_timestamp(frame_id)
+        timestamp_us = int(round(time_s * 1_000_000))
+        trajectory[timestamp_us, rig_id] = pose
+
+        for camera_id in range(num_cameras):
+            for tile_id in range(num_tiles):
+                sensor_id = f'cam{camera_id}_{tiles_format}'
+                sensor_id += f'-{tile_id}' if num_tiles > 1 else ''
+                logging.info("Processing :: frame_id: %d/%d "
+                        "- cam_id: %d/%d "
+                        "- tile_id: %d/%d",
+                        frame_idx + 1,
+                        num_frames,
+                        camera_id + 1,
+                        num_cameras,
+                        tile_id + 1,
+                        num_tiles)
                 image_path = nv.get_output_image_path(frame_id, camera_id, tile_id)
                 image_subpath = image_path.resolve().relative_to(output_path.resolve())
                 images[timestamp_us, sensor_id] = str(image_subpath)
@@ -168,9 +210,9 @@ if __name__ == '__main__':
     args = parser.parse_args().__dict__
 
     capture_path = args.pop('capture_path')
-    if capture_path.exists():
-        args['capture'] = Capture.load(capture_path)
-    else:
-        args['capture'] = Capture(sessions={}, path=capture_path)
+    # if capture_path.exists():
+    #     args['capture'] = Capture.load(capture_path)
+    # else:
+    args['capture'] = Capture(sessions={}, path=capture_path)
 
     run(**args)
