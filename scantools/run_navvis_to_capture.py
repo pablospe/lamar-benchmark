@@ -89,7 +89,8 @@ def run(input_path: Path, capture: Capture, tiles_format: str, session_id: Optio
     camera_id_0 = 0
     tile_id_0   = 0
 
-    world_from_rig = fix_vlx_extrinsics(get_pose(nv, frame_id_0, camera_id_0, tile_id_0))
+    # world_from_rig = fix_vlx_extrinsics(get_pose(nv, frame_id_0, camera_id_0, tile_id_0))
+    world_from_rig = get_pose(nv, frame_id_0, camera_id_0, tile_id_0)
     rig_from_world = world_from_rig.inverse()
 
     # Create Rig.
@@ -104,8 +105,8 @@ def run(input_path: Path, capture: Capture, tiles_format: str, session_id: Optio
             sensors[sensor_id] = sensor
 
             world_from_cam = get_pose(nv, frame_id_0, camera_id, tile_id)
-            if device == 'VLX' and camera_id == 'cam0':
-                world_from_cam = fix_vlx_extrinsics(world_from_cam)
+            # if device == 'VLX' and camera_id == 'cam0':
+            #     world_from_cam = fix_vlx_extrinsics(world_from_cam)
             rig_from_cam = rig_from_world * world_from_cam
             rigs[rig_id, sensor_id] = rig_from_cam
 
