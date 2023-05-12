@@ -27,7 +27,10 @@ def compute_downsampling_size(size: Tuple[int], max_edge: int):
 
 def get_pose(nv: NavVis, frame_id: int, camera_id: Optional[int] = 0, tile_id: Optional[int] = 0):
     qvec, tvec = nv.get_pose(frame_id, camera_id, tile_id)
-    return Pose(r=qvec, t=tvec)
+    pose = Pose(r=qvec, t=tvec)
+    # if nv.get_device() == 'VLX' and (camera_id == 0 or camera_id == 'cam0'):
+    #     pose = fix_vlx_extrinsics(pose)
+    return pose
 
 def fix_vlx_extrinsics(pose: Pose):
     # Camera 0 is (physically) mounted upside down on VLX.
@@ -53,7 +56,7 @@ def run(input_path: Path, capture: Capture, tiles_format: str, session_id: Optio
     nv = NavVis(input_path, output_path, tiles_format, upright)
 
     frame_ids = nv.get_frame_ids()
-    camera_ids = nv.get_camera_ids()
+    camera_ids = nv.get_camera_indexes()
     tiles = nv.get_tiles()
 
     num_frames = len(frame_ids)
@@ -89,7 +92,6 @@ def run(input_path: Path, capture: Capture, tiles_format: str, session_id: Optio
     camera_id_0 = 0
     tile_id_0   = 0
 
-    # world_from_rig = fix_vlx_extrinsics(get_pose(nv, frame_id_0, camera_id_0, tile_id_0))
     world_from_rig = get_pose(nv, frame_id_0, camera_id_0, tile_id_0)
     rig_from_world = world_from_rig.inverse()
 
@@ -97,7 +99,7 @@ def run(input_path: Path, capture: Capture, tiles_format: str, session_id: Optio
     rig_id = "navvis_rig"
     for camera_id in camera_ids:
         for tile_id in range(num_tiles):
-            sensor_id = f'{camera_id}_{tiles_format}'
+            sensor_id = f'cam{camera_id}_{tiles_format}'
             sensor_id += f'-{tile_id}' if num_tiles > 1 else ''
             sensor = create_sensor(
                 'camera', sensor_params=camera_params,
@@ -121,19 +123,16 @@ def run(input_path: Path, capture: Capture, tiles_format: str, session_id: Optio
         timestamp_us = int(round(time_s * 1_000_000))
         trajectory[timestamp_us, rig_id] = pose
 
-        for camera_id in range(num_cameras):
+        for camera_id in camera_ids:
             for tile_id in range(num_tiles):
                 sensor_id = f'cam{camera_id}_{tiles_format}'
                 sensor_id += f'-{tile_id}' if num_tiles > 1 else ''
                 logging.info("Processing :: frame_id: %d/%d "
                         "- cam_id: %d/%d "
                         "- tile_id: %d/%d",
-                        frame_idx + 1,
-                        num_frames,
-                        camera_id + 1,
-                        num_cameras,
-                        tile_id + 1,
-                        num_tiles)
+                        frame_idx + 1, num_frames,
+                        camera_id + 1, num_cameras,
+                        tile_id + 1,   num_tiles)
                 image_path = nv.get_output_image_path(frame_id, camera_id, tile_id)
                 image_subpath = image_path.resolve().relative_to(output_path.resolve())
                 images[timestamp_us, sensor_id] = str(image_subpath)
