@@ -25,11 +25,15 @@ def compute_downsampling_size(size: Tuple[int], max_edge: int):
     new_size = tuple([int(round(edge * scale)) for edge in size])
     return new_size
 
-def get_pose(nv: NavVis, frame_id: int, camera_id: Optional[int] = 0, tile_id: Optional[int] = 0):
-    qvec, tvec = nv.get_pose(frame_id, camera_id, tile_id)
+def get_pose(nv: NavVis,
+             upright: bool,
+             frame_id: int,
+             cam_id: Optional[int] = 0,
+             tile_id: Optional[int] = 0):
+    qvec, tvec = nv.get_pose(frame_id, cam_id, tile_id)
     pose = Pose(r=qvec, t=tvec)
-    # if nv.get_device() == 'VLX' and (camera_id == 0 or camera_id == 'cam0'):
-    #     pose = fix_vlx_extrinsics(pose)
+    if upright and nv.get_device() == 'VLX' and (cam_id == 0 or cam_id == 'cam0'):
+        pose = fix_vlx_extrinsics(pose)
     return pose
 
 def fix_vlx_extrinsics(pose: Pose):
@@ -92,7 +96,7 @@ def run(input_path: Path, capture: Capture, tiles_format: str, session_id: Optio
     camera_id_0 = 0
     tile_id_0   = 0
 
-    world_from_rig = get_pose(nv, frame_id_0, camera_id_0, tile_id_0)
+    world_from_rig = get_pose(nv, upright, frame_id_0, camera_id_0, tile_id_0)
     rig_from_world = world_from_rig.inverse()
 
     # Create Rig.
@@ -106,9 +110,7 @@ def run(input_path: Path, capture: Capture, tiles_format: str, session_id: Optio
                 name=f'NavVis {device} camera-{camera_id} tile-{tiles_format} id-{tile_id}')
             sensors[sensor_id] = sensor
 
-            world_from_cam = get_pose(nv, frame_id_0, camera_id, tile_id)
-            # if device == 'VLX' and camera_id == 'cam0':
-            #     world_from_cam = fix_vlx_extrinsics(world_from_cam)
+            world_from_cam = get_pose(nv, upright, frame_id_0, camera_id, tile_id)
             rig_from_cam = rig_from_world * world_from_cam
             rigs[rig_id, sensor_id] = rig_from_cam
 
@@ -118,7 +120,7 @@ def run(input_path: Path, capture: Capture, tiles_format: str, session_id: Optio
             if tile_id == 0:
                 logging.warning('Invalid frame %d.', frame_id)
             continue
-        pose = get_pose(nv, frame_id, camera_id=0)
+        pose = get_pose(nv, upright, frame_id, cam_id=0)
         time_s = nv.get_frame_timestamp(frame_id)
         timestamp_us = int(round(time_s * 1_000_000))
         trajectory[timestamp_us, rig_id] = pose
