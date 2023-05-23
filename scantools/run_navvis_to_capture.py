@@ -49,6 +49,9 @@ def fix_vlx_extrinsics(pose: Pose):
     pose = Pose(r=new_rotmat, t=pose.t)
     return pose
 
+def convert_to_us(time_s):
+    return int(round(time_s * 1_000_000))
+
 def run(input_path: Path, capture: Capture, tiles_format: str, session_id: Optional[str] = None,
         downsample_max_edge: int = None, upright: bool = True, copy_pointcloud: bool = False):
 
@@ -89,15 +92,10 @@ def run(input_path: Path, capture: Capture, tiles_format: str, session_id: Optio
     images = RecordsCamera()
     rigs = Rigs()
 
-    # frame_ids are the IDs of the valid frames, so it's not necessarily
-    # sequential and starting from `0`. Also, this code assumes NavVis produces
-    # consistent rigs across all frames, with `cam_id=0` as the rig base.
-    frame_id_0  = frame_ids[0]
-    camera_id_0 = 0
-    tile_id_0   = 0
-
-    world_from_rig = get_pose(nv, upright, frame_id_0, camera_id_0, tile_id_0)
-    rig_from_world = world_from_rig.inverse()
+    # This code assumes NavVis produces consistent rigs across all frames, using
+    # `cam_id=0` as the rig base.
+    frame_id_0 = frame_ids[0]
+    rig_from_world = get_pose(nv, upright, frame_id_0, cam_id=0, tile_id=0).inverse()
 
     # Create Rig.
     rig_id = "navvis_rig"
@@ -122,7 +120,7 @@ def run(input_path: Path, capture: Capture, tiles_format: str, session_id: Optio
             continue
         pose = get_pose(nv, upright, frame_id, cam_id=0)
         time_s = nv.get_frame_timestamp(frame_id)
-        timestamp_us = int(round(time_s * 1_000_000))
+        timestamp_us = convert_to_us(time_s)
         trajectory[timestamp_us, rig_id] = pose
 
         for camera_id in camera_ids:
@@ -150,7 +148,7 @@ def run(input_path: Path, capture: Capture, tiles_format: str, session_id: Optio
     sensor = create_sensor('wifi', sensor_params=[], name='NavVis M6 WiFi sensor')
     sensors[sensor_id] = sensor
     for measurement in nv.read_wifi():
-        timestamp_us = int(round(measurement.timestamp_s * 1_000_000))
+        timestamp_us = convert_to_us(measurement.timestamp_s)
         mac_addr = measurement.mac_address
         freq_khz = measurement.center_channel_freq_khz
         rssi_dbm = measurement.signal_strength_dbm
@@ -166,7 +164,7 @@ def run(input_path: Path, capture: Capture, tiles_format: str, session_id: Optio
     sensor = create_sensor('bluetooth', sensor_params=[], name='NavVis M6 bluetooth sensor')
     sensors[sensor_id] = sensor
     for measurement in nv.read_bluetooth():
-        timestamp_us = int(round(measurement.timestamp_s * 1_000_000))
+        timestamp_us = convert_to_us(measurement.timestamp_s)
         id = f'{measurement.guid}:{measurement.major_version}:{measurement.minor_version}'
         rssi_dbm = measurement.signal_strength_dbm
         if (timestamp_us, sensor_id) not in bluetooth_signals:
