@@ -106,7 +106,7 @@ def run(input_path: Path, capture: Capture, tiles_format: str, session_id: Optio
             sensor_id += f'-{tile_id}' if num_tiles > 1 else ''
             sensor = create_sensor(
                 'camera', sensor_params=camera_params,
-                name=f'NavVis {device} camera-{camera_id} tile-{tiles_format} id-{tile_id}')
+                name=f'NavVis {device} camera-cam{camera_id} tile-{tiles_format} id-{tile_id}')
             sensors[sensor_id] = sensor
 
             if export_as_rig:
@@ -120,13 +120,11 @@ def run(input_path: Path, capture: Capture, tiles_format: str, session_id: Optio
             if tile_id == 0:
                 logging.warning('Invalid frame %d.', frame_id)
             continue
-        pose = get_pose(nv, upright, frame_id, cam_id=0)
         time_s = nv.get_frame_timestamp(frame_id)
         timestamp_us = convert_to_us(time_s)
         if export_as_rig:
+            pose = get_pose(nv, upright, frame_id, cam_id=0)
             trajectory[timestamp_us, rig_id] = pose
-        else:
-            trajectory[timestamp_us, sensor_id] = pose
 
         for camera_id in camera_ids:
             for tile_id in range(num_tiles):
@@ -141,6 +139,9 @@ def run(input_path: Path, capture: Capture, tiles_format: str, session_id: Optio
                 image_path = nv.get_output_image_path(frame_id, camera_id, tile_id)
                 image_subpath = image_path.resolve().relative_to(output_path.resolve())
                 images[timestamp_us, sensor_id] = str(image_subpath)
+                if not export_as_rig:
+                    pose = get_pose(nv, upright, frame_id, camera_id, tile_id)
+                    trajectory[timestamp_us, sensor_id] = pose
 
     pointcloud_id = 'point_cloud_final'
     sensors[pointcloud_id] = create_sensor('lidar', name='final NavVis point cloud')
