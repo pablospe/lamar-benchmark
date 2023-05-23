@@ -53,7 +53,8 @@ def convert_to_us(time_s):
     return int(round(time_s * 1_000_000))
 
 def run(input_path: Path, capture: Capture, tiles_format: str, session_id: Optional[str] = None,
-        downsample_max_edge: int = None, upright: bool = True, copy_pointcloud: bool = False):
+        downsample_max_edge: int = None, upright: bool = True, export_as_rig: bool = False,
+        copy_pointcloud: bool = False):
 
     if session_id is None:
         session_id = input_path.name
@@ -90,15 +91,15 @@ def run(input_path: Path, capture: Capture, tiles_format: str, session_id: Optio
     sensors = Sensors()
     trajectory = Trajectories()
     images = RecordsCamera()
-    rigs = Rigs()
+    rigs = Rigs() if export_as_rig else None
 
-    # This code assumes NavVis produces consistent rigs across all frames, using
-    # `cam_id=0` as the rig base.
-    frame_id_0 = frame_ids[0]
-    rig_from_world = get_pose(nv, upright, frame_id_0, cam_id=0, tile_id=0).inverse()
+    if export_as_rig:
+        # This code assumes NavVis produces consistent rigs across all frames,
+        # using `cam_id=0` as the rig base.
+        frame_id_0 = frame_ids[0]
+        rig_from_world = get_pose(nv, upright, frame_id_0, cam_id=0, tile_id=0).inverse()
+        rig_id = "navvis_rig"
 
-    # Create Rig.
-    rig_id = "navvis_rig"
     for camera_id in camera_ids:
         for tile_id in range(num_tiles):
             sensor_id = f'cam{camera_id}_{tiles_format}'
@@ -108,9 +109,10 @@ def run(input_path: Path, capture: Capture, tiles_format: str, session_id: Optio
                 name=f'NavVis {device} camera-{camera_id} tile-{tiles_format} id-{tile_id}')
             sensors[sensor_id] = sensor
 
-            world_from_cam = get_pose(nv, upright, frame_id_0, camera_id, tile_id)
-            rig_from_cam = rig_from_world * world_from_cam
-            rigs[rig_id, sensor_id] = rig_from_cam
+            if export_as_rig:
+                world_from_cam = get_pose(nv, upright, frame_id_0, camera_id, tile_id)
+                rig_from_cam = rig_from_world * world_from_cam
+                rigs[rig_id, sensor_id] = rig_from_cam
 
     # Process frames (enumerate is needed since frame_id is not sequential).
     for frame_idx, frame_id in enumerate(frame_ids):
@@ -121,7 +123,10 @@ def run(input_path: Path, capture: Capture, tiles_format: str, session_id: Optio
         pose = get_pose(nv, upright, frame_id, cam_id=0)
         time_s = nv.get_frame_timestamp(frame_id)
         timestamp_us = convert_to_us(time_s)
-        trajectory[timestamp_us, rig_id] = pose
+        if export_as_rig:
+            trajectory[timestamp_us, rig_id] = pose
+        else:
+            trajectory[timestamp_us, sensor_id] = pose
 
         for camera_id in camera_ids:
             for tile_id in range(num_tiles):
@@ -206,6 +211,7 @@ if __name__ == '__main__':
     parser.add_argument('--session_id', type=str)
     parser.add_argument('--downsample_max_edge', type=int, default=None)
     add_bool_arg(parser, 'upright', default=True)
+    add_bool_arg(parser, 'export_as_rig', default=False)
     parser.add_argument('--copy_pointcloud', action='store_true')
     args = parser.parse_args().__dict__
 
