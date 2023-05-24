@@ -135,7 +135,7 @@ def run(input_path: Path, capture: Capture, tiles_format: str, session_id: Optio
                         "- tile_id: %d/%d",
                         frame_idx + 1, num_frames,
                         camera_id + 1, num_cameras,
-                        tile_id + 1,   num_tiles)
+                        tile_id + 1, num_tiles)
                 image_path = nv.get_output_image_path(frame_id, camera_id, tile_id)
                 image_subpath = image_path.resolve().relative_to(output_path.resolve())
                 images[timestamp_us, sensor_id] = str(image_subpath)
