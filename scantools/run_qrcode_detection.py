@@ -1,6 +1,7 @@
 import argparse
 import json
 import math
+import multiprocessing
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List, Optional
@@ -108,6 +109,16 @@ def save_qr_map(qr_map, path):
         json.dump(qr_map, json_file, indent=2)
 
 
+def _detect_qr_code(image_path, qrcode_path):
+    qrcodes = QRCodeDetector(image_path)
+    if qrcode_path.is_file():
+        qrcodes.load(qrcode_path)
+    else:
+        qrcodes.detect()
+        qrcodes.save(qrcode_path)
+    logger.info(qrcodes)
+
+
 def run_qrcode_detection(
     capture: Capture, session_id: str, mesh_id: str = "mesh"
 ):
@@ -125,27 +136,31 @@ def run_qrcode_detection(
 
     qrcode_dir = output_dir / "qrcodes"
     qrcode_dir.mkdir(exist_ok=True, parents=True)
+    suffix = ".qrcode.json"
 
+    # Detect QR codes (in parallel).
+    pool = multiprocessing.Pool(processes=multiprocessing.cpu_count())
+    for ts, cam_id in session.images.key_pairs():
+        filename = session.images[ts, cam_id]
+        image_path = output_dir / filename
+        qrcode_path = (qrcode_dir / filename).with_suffix(suffix)
+        pool.apply_async(_detect_qr_code, args=(image_path, qrcode_path))
+    pool.close()
+    pool.join()
+
+    # Create QR map from detected QR codes.
     qr_map = []
     for ts, cam_id in tqdm(session.images.key_pairs()):
         pose_cam2w = session.trajectories[ts, cam_id]
         camera = session.sensors[cam_id]
 
-        image_path = output_dir / session.images[ts, cam_id]
+        # Load QR codes.
+        filename = session.images[ts, cam_id]
+        image_path = output_dir / filename
+        qrcode_path = (qrcode_dir / filename).with_suffix(suffix)
         qrcodes = QRCodeDetector(image_path)
+        qrcodes.load(qrcode_path)
 
-        qrcode_path = qrcode_dir / session.images[ts, cam_id]
-        qrcode_path = qrcode_path.with_suffix(".qrcode.json")
-
-        if qrcode_path.is_file():
-            qrcodes.load(qrcode_path)
-        else:
-            qrcodes.detect()
-            qrcodes.save(qrcode_path)
-        # qrcodes.show(markersize=2)
-        logger.info(qrcodes)
-
-        # Create QR map from detected QR codes.
         for qr in qrcodes:
             points2D = np.asarray(qr["points2D"])
 
