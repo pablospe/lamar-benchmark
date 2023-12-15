@@ -27,19 +27,39 @@ from scantools.utils.io import read_mesh
 
 @dataclass
 class QRCodeDetector:
-    """_summary_
+    """
+    A class for detecting QR codes in an image.
 
-    Returns
+    This class uses pyzbar (`pip install pyzbar-upright`) libraries to detect QR
+    codes in an image file. Detected QR codes are stored in a list, with each QR
+    code represented as a dictionary containing its data and 2D points of the
+    corners.
+
+    Attributes
+    ----------
+    - image_path : str
+        The path to the image file where QR codes will be detected.
+    - qrcodes : list, optional
+        A list to store detected QR code information (default is an empty list).
+
+    Methods
     -------
-    _type_
-        _description_
+    - detect()
+        Detects QR codes in the specified image and populates the 'qrcodes'
+        attribute.
+    - load(path)
+        Loads QR code data from a CSV file.
+    - save(path)
+        Saves detected QR code data to a CSV file.
+    - show(markersize=1)
+        Displays the image with detected QR codes marked.
 
     Raises
     ------
     FileNotFoundError
-        _description_
+        If the specified image file does not exist.
     ValueError
-        _description_
+        If the CSV file's header format is incorrect during the load operation.
     """
 
     image_path: str
@@ -86,7 +106,7 @@ class QRCodeDetector:
             "top-right-corner.y",
         ]
 
-    def load(self, path):
+    def load(self, path: Path):
         with open(path, "r", newline="") as f:
             reader = csv.reader(f)
 
@@ -111,7 +131,7 @@ class QRCodeDetector:
                 }
                 self.qrcodes.append(qr_code)
 
-    def save(self, path):
+    def save(self, path: Path):
         Path(path).parent.mkdir(exist_ok=True, parents=True)
         with open(path, "w", newline="") as f:
             writer = csv.writer(f)
@@ -124,7 +144,7 @@ class QRCodeDetector:
                     row.extend(point)
                 writer.writerow(row)
 
-    def show(self, markersize=1):
+    def show(self, markersize: int = 1):
         img = cv2.imread(str(self.image_path))
         img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         plt.figure(0, figsize=(30, 70))
