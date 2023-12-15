@@ -27,6 +27,21 @@ from scantools.utils.io import read_mesh
 
 @dataclass
 class QRCodeDetector:
+    """_summary_
+
+    Returns
+    -------
+    _type_
+        _description_
+
+    Raises
+    ------
+    FileNotFoundError
+        _description_
+    ValueError
+        _description_
+    """
+
     image_path: str
     qrcodes: list = field(default_factory=list)
 
@@ -58,21 +73,56 @@ class QRCodeDetector:
             }
             self.qrcodes.append(qr_code)
 
+    def __cvs_header(self):
+        return [
+            "# qrcode_id",
+            "top-left-corner.x",
+            "top-left-corner.y",
+            "bottom-left-corner.x",
+            "bottom-left-corner.y",
+            "bottom-right-corner.x",
+            "bottom-right-corner.y",
+            "top-right-corner.x",
+            "top-right-corner.y",
+        ]
+
     def load(self, path):
-        if not Path(path).is_file():
-            raise FileNotFoundError(str(path))
-        if Path(path).stat().st_size == 0:
-            return []
-        with open(path) as json_file:
-            self.qrcodes = json.load(json_file)
+        with open(path, "r", newline="") as f:
+            reader = csv.reader(f)
+
+            # Read and verify header.
+            header = next(reader, None)
+            if header != self.__cvs_header():
+                raise ValueError(
+                    "The CSV header file does not match the expected format."
+                )
+
+            # Read QR codes.
+            self.qrcodes = []
+            for row in reader:
+                qr_code = {
+                    "id": row[0],
+                    "points2D": [
+                        [float(row[1]), float(row[2])],
+                        [float(row[3]), float(row[4])],
+                        [float(row[5]), float(row[6])],
+                        [float(row[7]), float(row[8])],
+                    ],
+                }
+                self.qrcodes.append(qr_code)
 
     def save(self, path):
         Path(path).parent.mkdir(exist_ok=True, parents=True)
-        if not self.qrcodes:
-            Path(path).touch()
-        else:
-            with open(path, "w") as json_file:
-                json.dump(self.qrcodes, json_file, indent=2)
+        with open(path, "w", newline="") as f:
+            writer = csv.writer(f)
+            # Write header.
+            writer.writerow(self.__cvs_header())
+            # Write QR codes.
+            for qr in self.qrcodes:
+                row = [qr["id"]]
+                for point in qr["points2D"]:
+                    row.extend(point)
+                writer.writerow(row)
 
     def show(self, markersize=1):
         img = cv2.imread(str(self.image_path))
@@ -81,8 +131,8 @@ class QRCodeDetector:
         plt.imshow(img)
 
         for qr in self.qrcodes:
-            # ! pyzbar returns points in the following order:
-            # !     1. top-left, 2. bottom-left, 3. bottom-right, 4. top-right
+            # pyzbar returns points in the following order:
+            #   1. top-left, 2. bottom-left, 3. bottom-right, 4. top-right
             print("[INFO] Found {}: {}".format("QR Code", qr["id"]))
             print(qr["points2D"])
             (x, y) = qr["points2D"][0]
@@ -96,27 +146,12 @@ class QRCodeDetector:
         plt.show()
 
 
-# Load QR map from json file.
-def load_qr_map(path):
-    with open(path) as json_file:
-        print("Loading QR code poses from file:", path)
-        qr_map = json.load(json_file)
-        return qr_map
-
-
-# Save QR map to json file.
-def save_qr_map(qr_map, path):
-    with open(path, "w") as json_file:
-        print("Saving qr_map to file:", path)
-        json.dump(qr_map, json_file, indent=2)
-
-
 def generate_csv_header(sample_qr: dict):
     """
     Generates a CSV header based on the structure of a sample QR dictionary.
 
-    Args:
-    sample_qr (dict): A sample QR dictionary from the qr_map.
+    Parameters:
+     - sample_qr (dict): A sample QR dictionary from the qr_map.
 
     Returns:
     list: A list of header strings for the CSV file.
@@ -150,6 +185,8 @@ def generate_csv_header(sample_qr: dict):
             # Directly add the key for scalar values.
             header.append(key)
 
+    # Add a comment character to the first header field.
+    header[0] = "# " + header[0]
     return header
 
 
@@ -158,9 +195,9 @@ def save_qr_map_txt(qr_map: list[dict], path: Path):
     """
     Save a QR map to a text file.
 
-    Args:
-    qr_map (list): A list of dictionaries representing QR data.
-    path (str): The file path where the QR map will be saved.
+    Parameters:
+     - qr_map (list): A list of dictionaries representing QR data.
+     - path (str): The file path where the QR map will be saved.
     """
     try:
         with open(path, "w", newline="") as f:
@@ -187,10 +224,39 @@ def save_qr_map_txt(qr_map: list[dict], path: Path):
                         row.extend(flattened_value)
                 writer.writerow(row)
     except Exception as e:
-        print(f"An error occurred while saving the QR map: {e}")
+        logger.info(f"An error occurred while saving the QR map: {e}")
 
 
-def _detect_qr_code(image_path, qrcode_path):
+# Load QR map from json file.
+def load_qr_map_json(path):
+    with open(path) as json_file:
+        logger.info("Loading QR code poses from file:", path)
+        qr_map = json.load(json_file)
+        return qr_map
+
+
+# Save QR map to json file.
+def save_qr_map_json(qr_map, path):
+    with open(path, "w") as json_file:
+        logger.info("Saving qr_map to file:", path)
+        json.dump(qr_map, json_file, indent=2)
+
+
+def _detect_qr_code(image_path: Path, qrcode_path: Path):
+    """
+    Detect QR codes in an image and save them to a file.
+
+    Uses QRCodeDetector class to detect QR codes in the image specified by
+    `image_path`. If a file already exists at `qrcode_path`, the function will
+    load the QR codes from it instead of detecting them in the image. Otherwise,
+    it detects the QR codes in the image and saves them to `qrcode_path`.
+
+    Parameters:
+     - image_path (Path): image path file in which to detect QR codes.
+     - qrcode_path (Path): path to file where the detected QR codes should be saved.
+
+    Returns: None
+    """
     qrcodes = QRCodeDetector(image_path)
     if qrcode_path.is_file():
         qrcodes.load(qrcode_path)
@@ -200,13 +266,33 @@ def _detect_qr_code(image_path, qrcode_path):
     logger.info(qrcodes)
 
 
-def run_qrcode_detection(
+def qrcode_detection(
     capture: Capture,
     session_id: str,
     mesh_id: str = "mesh",
     json_format: bool = True,
     txt_format: bool = True,
 ):
+    """
+    Detect QR codes in images and save them to a file.
+
+    Uses QRCodeDetector class to detect QR codes in the images specified by
+    `capture` and `session_id`. If a file already exists at `qrcode_path`, the
+    function will load the QR codes from it instead of detecting them in the
+    image. Otherwise, it detects the QR codes in the image and saves them to
+    `qrcode_path`.
+
+    Parameters:
+     - capture (Capture): Capture object containing the images and sessions.
+     - session_id (str): ID of the session to process.
+     - mesh_id (str, optional): ID of the mesh to use. Defaults to "mesh".
+     - json_format (bool, optional): Whether to save the QR map in JSON format.
+       Defaults to True.
+     - txt_format (bool, optional): Whether to save the QR map in TXT format.
+       Defaults to True.
+
+    Returns: None
+    """
     session = capture.sessions[session_id]
     output_dir = capture.proc_path(session_id)
 
@@ -222,19 +308,19 @@ def run_qrcode_detection(
     image_dir = capture.data_path(session_id)
     qrcode_dir = output_dir / "qrcodes"
     qrcode_dir.mkdir(exist_ok=True, parents=True)
-    suffix = ".qrcode.json"
+    suffix = ".qrcode.txt"
 
-    # Detect QR codes (in parallel).
+    logger.info("Detecting QR codes.")
     pool = multiprocessing.Pool(processes=multiprocessing.cpu_count())
     for ts, cam_id in session.images.key_pairs():
         filename = session.images[ts, cam_id]
-        image_path = output_dir / filename
+        image_path = image_dir / filename
         qrcode_path = (qrcode_dir / filename).with_suffix(suffix)
         pool.apply_async(_detect_qr_code, args=(image_path, qrcode_path))
     pool.close()
     pool.join()
 
-    # Create QR map from detected QR codes.
+    logger.info("Create QR map from detected QR codes.")
     qr_map = []
     for ts, cam_id in tqdm(session.images.key_pairs()):
         pose_cam2w = session.trajectories[ts, cam_id]
@@ -328,7 +414,7 @@ def run_qrcode_detection(
 
     # Save QR map.
     if json_format:
-        save_qr_map(qr_map, qrcode_dir / "qr_map.json")
+        save_qr_map_json(qr_map, qrcode_dir / "qr_map.json")
     if txt_format:
         save_qr_map_txt(qr_map, qrcode_dir / "qr_map.txt")
 
@@ -372,7 +458,7 @@ def run(
                 session,
             )
 
-        run_qrcode_detection(capture, session, **kargs)
+        qrcode_detection(capture, session, **kargs)
 
         if visualization:
             to_meshlab_visualization.run(
