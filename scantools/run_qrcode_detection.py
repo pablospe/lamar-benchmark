@@ -165,14 +165,14 @@ class QRCodeDetector:
 
             colors = ["m.", "g.", "b.", "r."]
             for qr in self.qrcodes:
-                logging.info(f"Found QR Code: {qr['id']}")
-                logging.info(qr["points2D"])
+                logger.info(f"Found QR Code: {qr['id']}")
+                logger.info(qr["points2D"])
                 for i, point in enumerate(qr["points2D"]):
                     x, y = point
                     plt.plot(x, y, colors[i], markersize)
             plt.show()
         except Exception as e:
-            logging.error(f"Error displaying the image: {e}")
+            logger.info(f"Error displaying the image: {e}")
 
 
 def generate_csv_header(sample_qr: dict):
@@ -312,13 +312,13 @@ def qrcode_detection(
     `qrcode_path`.
 
     Parameters:
-    - capture (Capture): Capture object containing the images and sessions.
-    - session_id (str): ID of the session to process.
-    - mesh_id (str, optional): ID of the mesh to use. Defaults to "mesh".
-    - json_format (bool, optional): Whether to save the QR map in JSON format.
-      Defaults to True.
-    - txt_format (bool, optional): Whether to save the QR map in TXT format.
-      Defaults to True.
+     - capture (Capture): Capture object containing the images and sessions.
+     - session_id (str): ID of the session to process.
+     - mesh_id (str, optional): ID of the mesh to use. Defaults to "mesh".
+     - json_format (bool, optional): Whether to save the QR map in JSON format.
+       Defaults to True.
+     - txt_format (bool, optional): Whether to save the QR map in TXT format.
+       Defaults to True.
 
     Returns: None
     """
