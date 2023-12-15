@@ -53,13 +53,6 @@ class QRCodeDetector:
         Saves detected QR code data to a CSV file.
     - show(markersize=1)
         Displays the image with detected QR codes marked.
-
-    Raises
-    ------
-    FileNotFoundError
-        If the specified image file does not exist.
-    ValueError
-        If the CSV file's header format is incorrect during the load operation.
     """
 
     image_path: str
@@ -67,7 +60,9 @@ class QRCodeDetector:
 
     def __post_init__(self):
         if not Path(self.image_path).is_file():
-            raise FileNotFoundError(str(self.image_path))
+            raise FileNotFoundError(
+                f"The file {self.image_path} was not found."
+            )
 
     def __getitem__(self, key):
         return self.qrcodes[key]
@@ -81,19 +76,25 @@ class QRCodeDetector:
     def is_empty(self):
         return len(self.qrcodes) == 0
 
-    # Detect QR codes.
     def detect(self):
-        img = cv2.imread(str(self.image_path))
-        detected_qrcodes = decode(img, symbols=[ZBarSymbol.QRCODE])
-        # Loop over the detected QR codes.
-        for qr in detected_qrcodes:
-            qr_code = {
-                "id": qr.data.decode("utf-8"),
-                "points2D": np.asarray(qr.polygon, dtype=float).tolist(),
-            }
-            self.qrcodes.append(qr_code)
+        try:
+            img = cv2.imread(str(self.image_path))
+            if img is None:
+                raise ValueError("Unable to read the image file.")
+            detected_qrcodes = decode(img, symbols=[ZBarSymbol.QRCODE])
 
-    def __cvs_header(self):
+            for qr in detected_qrcodes:
+                qr_code = {
+                    "id": qr.data.decode("utf-8"),
+                    "points2D": np.asarray(qr.polygon, dtype=float).tolist(),
+                }
+                self.qrcodes.append(qr_code)
+        except Exception as e:
+            raise RuntimeError(
+                f"An error occurred during QR code detection: {e}"
+            )
+
+    def __csv_header(self):
         return [
             "# qrcode_id",
             "top-left-corner.x",
@@ -106,18 +107,16 @@ class QRCodeDetector:
             "top-right-corner.y",
         ]
 
-    def load(self, path: Path):
+    def load(self, path):
         with open(path, "r", newline="") as f:
             reader = csv.reader(f)
 
-            # Read and verify header.
             header = next(reader, None)
-            if header != self.__cvs_header():
+            if header != self.__csv_header():
                 raise ValueError(
                     "The CSV header file does not match the expected format."
                 )
 
-            # Read QR codes.
             self.qrcodes = []
             for row in reader:
                 qr_code = {
@@ -131,13 +130,11 @@ class QRCodeDetector:
                 }
                 self.qrcodes.append(qr_code)
 
-    def save(self, path: Path):
+    def save(self, path):
         Path(path).parent.mkdir(exist_ok=True, parents=True)
         with open(path, "w", newline="") as f:
             writer = csv.writer(f)
-            # Write header.
-            writer.writerow(self.__cvs_header())
-            # Write QR codes.
+            writer.writerow(self.__csv_header())
             for qr in self.qrcodes:
                 row = [qr["id"]]
                 for point in qr["points2D"]:
@@ -145,25 +142,37 @@ class QRCodeDetector:
                 writer.writerow(row)
 
     def show(self, markersize: int = 1):
-        img = cv2.imread(str(self.image_path))
-        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-        plt.figure(0, figsize=(30, 70))
-        plt.imshow(img)
+        """
+        Display the image with detected QR codes.
 
-        for qr in self.qrcodes:
-            # pyzbar returns points in the following order:
-            #   1. top-left, 2. bottom-left, 3. bottom-right, 4. top-right
-            print("[INFO] Found {}: {}".format("QR Code", qr["id"]))
-            print(qr["points2D"])
-            (x, y) = qr["points2D"][0]
-            plt.plot(x, y, "m.", markersize)
-            (x, y) = qr["points2D"][1]
-            plt.plot(x, y, "g.", markersize)
-            (x, y) = qr["points2D"][2]
-            plt.plot(x, y, "b.", markersize)
-            (x, y) = qr["points2D"][3]
-            plt.plot(x, y, "r.", markersize)
-        plt.show()
+        This function reads an image from `self.image_path`, displays it using
+        matplotlib, and overlays the detected QR codes. Each corner of the QR
+        codes is marked with a different color.
+
+        Parameters:
+        - markersize (int, optional): The size of the markers that indicate the
+        corners of the QR codes. Defaults to 1.
+
+        Raises: ValueError: If the image file cannot be read.
+        """
+        try:
+            img = cv2.imread(str(self.image_path))
+            if img is None:
+                raise ValueError("Unable to read the image file.")
+            img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+            plt.figure(0, figsize=(30, 70))
+            plt.imshow(img)
+
+            colors = ["m.", "g.", "b.", "r."]
+            for qr in self.qrcodes:
+                logging.info(f"Found QR Code: {qr['id']}")
+                logging.info(qr["points2D"])
+                for i, point in enumerate(qr["points2D"]):
+                    x, y = point
+                    plt.plot(x, y, colors[i], markersize)
+            plt.show()
+        except Exception as e:
+            logging.error(f"Error displaying the image: {e}")
 
 
 def generate_csv_header(sample_qr: dict):
@@ -171,7 +180,7 @@ def generate_csv_header(sample_qr: dict):
     Generates a CSV header based on the structure of a sample QR dictionary.
 
     Parameters:
-     - sample_qr (dict): A sample QR dictionary from the qr_map.
+    - sample_qr (dict): A sample QR dictionary from the qr_map.
 
     Returns:
     list: A list of header strings for the CSV file.
@@ -216,8 +225,8 @@ def save_qr_map_txt(qr_map: list[dict], path: Path):
     Save a QR map to a text file.
 
     Parameters:
-     - qr_map (list): A list of dictionaries representing QR data.
-     - path (str): The file path where the QR map will be saved.
+    - qr_map (list): A list of dictionaries representing QR data.
+    - path (str): The file path where the QR map will be saved.
     """
     try:
         with open(path, "w", newline="") as f:
@@ -272,8 +281,8 @@ def _detect_qr_code(image_path: Path, qrcode_path: Path):
     it detects the QR codes in the image and saves them to `qrcode_path`.
 
     Parameters:
-     - image_path (Path): image path file in which to detect QR codes.
-     - qrcode_path (Path): path to file where the detected QR codes should be saved.
+    - image_path (Path): image path file in which to detect QR codes.
+    - qrcode_path (Path): path to file where the detected QR codes should be saved.
 
     Returns: None
     """
@@ -303,13 +312,13 @@ def qrcode_detection(
     `qrcode_path`.
 
     Parameters:
-     - capture (Capture): Capture object containing the images and sessions.
-     - session_id (str): ID of the session to process.
-     - mesh_id (str, optional): ID of the mesh to use. Defaults to "mesh".
-     - json_format (bool, optional): Whether to save the QR map in JSON format.
-       Defaults to True.
-     - txt_format (bool, optional): Whether to save the QR map in TXT format.
-       Defaults to True.
+    - capture (Capture): Capture object containing the images and sessions.
+    - session_id (str): ID of the session to process.
+    - mesh_id (str, optional): ID of the mesh to use. Defaults to "mesh".
+    - json_format (bool, optional): Whether to save the QR map in JSON format.
+      Defaults to True.
+    - txt_format (bool, optional): Whether to save the QR map in TXT format.
+      Defaults to True.
 
     Returns: None
     """
