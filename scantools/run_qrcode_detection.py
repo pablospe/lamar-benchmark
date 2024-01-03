@@ -166,6 +166,8 @@ class QRCodeDetector:
 
             colors = ["m.", "g.", "b.", "r."]
             for qr in self.qrcodes:
+                # pyzbar returns points in the following order:
+                #   1. top-left, 2. bottom-left, 3. bottom-right, 4. top-right
                 logger.info(f"Found QR Code: {qr['id']}")
                 logger.info(qr["points2D"])
                 for i, point in enumerate(qr["points2D"]):
@@ -439,25 +441,28 @@ def qrcode_detection(
             points3D_world = intersections
 
             # QR code indices:
-            #   0. top-left,
-            #   1. bottom-left,
-            #   2. bottom-right,
-            #   3. top-right
+            #
+            #     0. top-left,
+            #     1. bottom-left,
+            #     2. bottom-right,
+            #     3. top-right
             #
             #
             # QR code coordinate system:
-            #        ^
-            #       /
-            #      / z-axis
-            #     /
-            #   0. ---- x-axis --->  3.
-            #   |
-            #   |
-            #   y-axis
-            #   |
-            #   |
-            #   v
-            #   1.                   2.
+            #
+            #            ^
+            #           / z-axis
+            #          /
+            #         /
+            #
+            #       0.  --- x-axis --->   3.
+            #
+            #       |
+            #       | y-axis
+            #       |
+            #       v
+            #
+            #       1.                    2.
             #
 
             # Rotation (QR to World).
