@@ -6,7 +6,7 @@ import math
 import multiprocessing
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 import cv2
 import matplotlib.pyplot as plt
@@ -151,9 +151,10 @@ class QRCodeDetector:
 
         Parameters:
         - markersize (int, optional): The size of the markers that indicate the
-        corners of the QR codes. Defaults to 1.
+                                      corners of the QR codes. Defaults to 1.
 
-        Raises: ValueError: If the image file cannot be read.
+        Raises:
+        - ValueError: If the image file cannot be read.
         """
         try:
             img = cv2.imread(str(self.image_path))
@@ -173,6 +174,62 @@ class QRCodeDetector:
             plt.show()
         except Exception as e:
             logger.info(f"Error displaying the image: {e}")
+
+
+def calculate_area(vertices: List[Tuple[float, float]]) -> float:
+    """
+    Calculate the area of a polygon given its vertices using the Shoelace
+    formula. The Shoelace formula, also known as Gauss's area formula, sums the
+    cross-products of pairs of sequential vertices and divides by 2. It works
+    for any non-self-intersecting polygon.
+
+    Parameters:
+    - vertices (list of tuples): A list of (x, y) tuples representing the
+                                 vertices of the polygon.
+
+    Returns:
+    - float: The area of the polygon.
+    """
+    n = len(vertices)
+
+    area = 0
+    for i in range(n):
+        x1, y1 = vertices[i]
+        x2, y2 = vertices[(i + 1) % n]  # Ensure last vertex connects to first.
+        area += x1 * y2 - x2 * y1
+
+    return abs(area) / 2.0
+
+
+def filter_qr_codes_by_area(qr_codes: list[dict]) -> list[dict]:
+    """
+    Filter the QR codes by area, keeping only the largest one for each ID.
+
+    Parameters:
+    - qr_map (list): A list of dictionaries representing the QR codes.
+
+    Returns:
+    - qr_map_filtered (list): A filtered list of QR codes, with only the
+                              largest QR code for each unique ID.
+    """
+    # Extract unique IDs from the QR codes.
+    qr_ids = {qr["id"] for qr in qr_codes}
+
+    # Iterate over unique IDs and filter the largest QR code for each ID.
+    qr_map_filtered = [
+        max(
+            [
+                qr for qr in qr_codes if qr["id"] == qr_id
+            ],  # QR codes with same id
+            key=lambda qr: calculate_area(qr["points2D"]),
+        )
+        for qr_id in qr_ids
+    ]
+
+    # Sort the filtered list by ID for consistent ordering.
+    qr_map_filtered.sort(key=lambda qr: qr["id"])
+
+    return qr_map_filtered
 
 
 def generate_csv_header(sample_qr: dict):
@@ -442,10 +499,21 @@ def qrcode_detection(
             qr_map.append(QR)
 
     # Save QR map.
+    qr_map_path = qrcode_dir / "qr_map.json"
     if json_format:
-        save_qr_map_json(qr_map, qrcode_dir / "qr_map.json")
+        save_qr_map_json(qr_map, qr_map_path)
     if txt_format:
-        save_qr_map_txt(qr_map, qrcode_dir / "qr_map.txt")
+        save_qr_map_txt(qr_map, qr_map_path.with_suffix(".txt"))
+
+    # Save filtered QR map.
+    qr_map_filtered = filter_qr_codes_by_area(qr_map)
+    qr_map_filtered_path = qrcode_dir / "qr_map_filtered_by_area.json"
+    if json_format:
+        save_qr_map_json(qr_map_filtered, qr_map_filtered_path)
+    if txt_format:
+        save_qr_map_txt(
+            qr_map_filtered, qr_map_filtered_path.with_suffix(".txt")
+        )
 
 
 def run(
