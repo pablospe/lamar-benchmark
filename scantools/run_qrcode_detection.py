@@ -220,9 +220,7 @@ def filter_qr_codes_by_area(qr_codes: list[dict]) -> list[dict]:
     # Iterate over unique IDs and filter the largest QR code for each ID.
     qr_map_filtered = [
         max(
-            [
-                qr for qr in qr_codes if qr["id"] == qr_id
-            ],  # QR codes with same id
+            [qr for qr in qr_codes if qr["id"] == qr_id],  # QRs with same id.
             key=lambda qr: calculate_polygon_area(qr["points2D"]),
         )
         for qr_id in qr_ids
@@ -648,10 +646,7 @@ def run(
             or mesh_id not in capture.sessions[session].proc.meshes
         ):
             logger.info("Meshing session %s.", session)
-            run_meshing.run(
-                capture,
-                session,
-            )
+            run_meshing.run(capture, session)
 
         qrcode_detection(capture, session, **kargs)
 
