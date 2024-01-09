@@ -72,8 +72,8 @@ def run_qrcode_detection_session(
     capture: Capture,
     session_id: str,
     mesh_id: str = "mesh",
-    json_format: bool = True,
     txt_format: bool = True,
+    json_format: bool = False,
 ):
     """
     Detect QR codes in the images of a session and save them to a file (qr_map).
@@ -82,10 +82,10 @@ def run_qrcode_detection_session(
      - capture (Capture): Capture object containing the images and sessions.
      - session_id (str): ID of the session to process.
      - mesh_id (str, optional): ID of the mesh to use. Defaults to "mesh".
-     - json_format (bool, optional): Whether to save the QR map in JSON format.
-       Defaults to True.
      - txt_format (bool, optional): Whether to save the QR map in TXT format.
        Defaults to True.
+     - json_format (bool, optional): Whether to save the QR map in JSON format.
+       Defaults to False.
 
     Returns: None
     """
@@ -196,16 +196,16 @@ if __name__ == "__main__":
         "Pass --no-visualization to set to False.",
     )
     parser.add_argument(
-        "--json_format",
-        action=argparse.BooleanOptionalAction,
-        default=True,
-        help="Write out QR maps in json format. Default: True.",
-    )
-    parser.add_argument(
         "--txt_format",
         action=argparse.BooleanOptionalAction,
         default=True,
         help="Write out QR maps in txt format. Default: True.",
+    )
+    parser.add_argument(
+        "--json_format",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Write out QR maps in json format. Default: False.",
     )
     args = parser.parse_args().__dict__
 
