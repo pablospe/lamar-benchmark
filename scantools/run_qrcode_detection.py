@@ -17,6 +17,19 @@ from scantools.qr.map import (
     save_qr_maps,
 )
 
+description = """
+This script is used for QR code detection. The script saves the QR map (list of
+all QR codes) in the `CAPTURE_PATH/proc/qrcodes/` directory. The QR map can be
+saved in both TXT and JSON formats. The TXT format is used for compatibility
+with the rest of CAPTURE format. The JSON format is used for convince but
+disabled by default. The script also saves the detected QR codes for each image.
+These are saved in the `CAPTURE_PATH/proc/qrcodes/` directory with the same name
+as the image file, but with the `.qrcodes.txt` suffix. These files are used to
+load the QR codes if they have already been detected for the image. This is
+useful when we want to re-run the script without having to detect the QR codes
+again.
+"""
+
 
 def run(
     capture_path: Path,
@@ -161,7 +174,7 @@ def _detect_or_load_qr_codes(image_path: Path, qrcode_path: Path):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(description=description)
     parser.add_argument(
         "--capture_path",
         type=Path,

@@ -1,16 +1,21 @@
 import csv
-import itertools
-import json
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import List, Tuple
 
 import cv2
 import matplotlib.pyplot as plt
 import numpy as np
-from pyzbar.pyzbar import ZBarSymbol, decode  # pip install pyzbar-upright
 
 from scantools import logger
+
+try:
+    from pyzbar.pyzbar import ZBarSymbol, decode  # pip install pyzbar-upright
+except ImportError as error:
+    logger.info(
+        "Optional dependency not installed: pyzbar-upright. Please install it "
+        "with 'pip install pyzbar-upright' to enable QR code detection."
+    )
+    raise error
 
 
 @dataclass
