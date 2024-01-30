@@ -16,7 +16,6 @@ RUN apt-get update && \
 
 RUN python3 -m pip install --upgrade pip
 
-# RUN git clone --depth 1 --recursive https://github.com/microsoft/lamar-benchmark lamar
 ADD . /lamar
 
 #
@@ -41,13 +40,28 @@ COPY docker/scripts/build_pcdmeshing.sh /tmp/
 RUN bash /tmp/build_pcdmeshing.sh && rm /tmp/build_pcdmeshing.sh
 
 # Build hloc.
-COPY docker/scripts/build_hloc.sh /tmp/
-RUN bash /tmp/build_hloc.sh && rm /tmp/build_hloc.sh
+# COPY docker/scripts/build_hloc.sh /tmp/
+# RUN bash /tmp/build_hloc.sh && rm /tmp/build_hloc.sh
 
 #
 # Scantools stage.
 #
-FROM common as scantools
+FROM ubuntu:22.04 as scantools
+
+# Minimal toolings.
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends --no-install-suggests \
+        bash \
+        git \
+        python-is-python3 \
+        python3-minimal \
+        python3-pip \
+        sudo \
+        wget
+
+RUN python3 -m pip install --upgrade pip
+
+ADD . /lamar
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends --no-install-suggests \
