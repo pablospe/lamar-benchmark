@@ -70,7 +70,6 @@ def run(
                 capture,
                 session,
                 "point_cloud_final",
-                mesh_id,
                 method=meshing_method,
             )
 
