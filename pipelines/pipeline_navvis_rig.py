@@ -17,67 +17,78 @@ from scantools.scanners.navvis.camera_tiles import TileFormat
 TILE_CHOICES = sorted([attr.name.split("_")[1] for attr in TileFormat])
 
 description = """
+--------------------------------------------------------------------------------
+
+Pipeline description
+====================
+
 Converts Navvis data to Lamar/Capture format exported as rig, including meshing,
 depth maps rendering, and QR code detection.
 
 **Input Parameters**
-* The input path for the data to be processed. Example:
 
-    datasets_proc/                               (--input_path "datasets_proc/")
-    ├── 2023-12-08_10.51.38
-    ├── 2023-12-15_15.45.51
-    └── 2023-12-15_15.58.10
+    a) The input path for the data to be processed. Example:
 
-* The tile format. Default: "3x3".
+        datasets_proc/                           (--input_path "datasets_proc/")
+        ├── 2023-12-08_10.51.38
+        ├── 2023-12-15_15.45.51
+        └── 2023-12-15_15.58.10
 
-* The output path where processed data will be saved. Defaults to the
-    current working directory. Example:
+    b) The tile format. Default: "3x3".
 
-    pipeline_output/                          (--output_path "pipeline_output/")
-    └── datasets_proc/
-        └── sessions
-            ├── 2023-12-08_10.51.38
-            ├── 2023-12-15_15.45.51
-            └── 2023-12-15_15.58.10
-                ├── proc
-                │   ├── meshes
-                │   │   ├── mesh.ply
-                │   │   └── mesh_simplified.ply
-                │   └── qrcodes
-                │       ├── images_undistr
-                │       ├── qr_map_filtered_by_area.txt
-                │       └── qr_map.txt
-                ├── raw_data
-                │   ├── images_undistr_3x3
-                │   ├── LUT
-                │   ├── render
-                │   └── pointcloud.ply
-                ├── bt.txt
-                ├── depths.txt
-                ├── images.txt
-                ├── pointclouds.txt
-                ├── rigs.txt
-                ├── sensors.txt
-                ├── trajectories.txt
-                └── wifi.txt
+    c) The output path where processed data will be saved. Defaults to the
+       current working directory. Example:
+
+        pipeline_output/                      (--output_path "pipeline_output/")
+        └── datasets_proc/
+            └── sessions
+                ├── 2023-12-08_10.51.38
+                ├── 2023-12-15_15.45.51
+                └── 2023-12-15_15.58.10
+                    ├── proc
+                    │   ├── meshes
+                    │   │   ├── mesh.ply
+                    │   │   └── mesh_simplified.ply
+                    │   └── qrcodes
+                    │       ├── images_undistr
+                    │       ├── qr_map_filtered_by_area.txt
+                    │       └── qr_map.txt
+                    ├── raw_data
+                    │   ├── images_undistr_3x3
+                    │   ├── LUT
+                    │   ├── render
+                    │   └── pointcloud.ply
+                    ├── bt.txt
+                    ├── depths.txt
+                    ├── images.txt
+                    ├── pointclouds.txt
+                    ├── rigs.txt
+                    ├── sensors.txt
+                    ├── trajectories.txt
+                    └── wifi.txt
 
 1. **Mesh Generation**
-We create two meshes: * full size (mesh.ply), and * simplified one
-(mesh_simplified.ply), from the provided point cloud.
+
+    We create two meshes:
+        * full size (mesh.ply), and
+        * simplified one (mesh_simplified.ply),
+    from the provided point cloud.
 
 2. **Depth Map Generation**
-Generate depth maps using the previously computed mesh. This step, which can be
-computationally intensive, calculates the distance from the camera sensor to
-scene objects for each pixel. It can utilize either the default or simplified
-mesh, influencing the level of detail and computational complexity. We recommend
-to use the simplified mesh for large scene.
+
+    Generate depth maps using the previously computed mesh. This step, which can
+    be computationally intensive, calculates the distance from the camera sensor
+    to scene objects for each pixel. It can utilize either the default or
+    simplified mesh, influencing the level of detail and computational
+    complexity. We recommend to use the simplified mesh for large scene.
 
 3. **QR Code Detection**
-This step generates an additional output folder for processing QR codes in full
-undistorted images, not their tiled versions. It uses the previously computed
-mesh from the NavVis point cloud to determine the 3D position of detected QR
-code corners via raycasting. Outputs are saved in TXT (default) and optionally
-in JSON for readability.
+
+    This step generates an additional output folder for processing QR codes in
+    full undistorted images, not their tiled versions. It uses the previously
+    computed mesh from the NavVis point cloud to determine the 3D position of
+    detected QR code corners via raycasting. Outputs are saved in TXT (default)
+    and optionally in JSON for readability.
 """
 
 
@@ -87,6 +98,8 @@ def run(
     sessions: Optional[List[str]] = None,
     tiles_format: Optional[str] = "3x3",
     meshing_method: str = "advancing_front",
+    meshing: bool = True,
+    rendering: bool = True,
     qrcode_detection: bool = True,
     use_simplified_mesh: bool = False,
     visualization: bool = True,
@@ -103,6 +116,10 @@ def run(
     mesh_id = "mesh"
     if use_simplified_mesh:
         mesh_id += "_simplified"
+
+    # Run the rendring and QR codes dectection requires a mesh.
+    if rendering or qrcode_detection:
+        meshing = True
 
     # If `sessions` is not provided, run for all sessions in the `input_path`.
     if sessions is None:
@@ -121,7 +138,7 @@ def run(
                 copy_pointcloud=True,
             )
 
-        if (
+        if meshing and (
             not capture.sessions[session].proc
             or mesh_id not in capture.sessions[session].proc.meshes
         ):
@@ -133,7 +150,7 @@ def run(
                 method=meshing_method,
             )
 
-        if not capture.sessions[session].depths:
+        if rendering and not capture.sessions[session].depths:
             logger.info("Rendering session %s.", session)
             run_rendering.run(capture, session, mesh_id=mesh_id)
 
@@ -150,7 +167,7 @@ def run(
             )
 
             # QR codes are captured intentionally by approaching them closely.
-            # As a result, we don't use tiling, which could potentially split
+            # As a result, we don't use tiling which could potentially split
             # the QR code across multiple tiles.
             tiles_format_qrcode = "none"
             run_navvis_to_capture.run(
@@ -184,7 +201,9 @@ def run(
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description=description)
+    parser = argparse.ArgumentParser(
+        description=description, formatter_class=argparse.RawTextHelpFormatter
+    )
     parser.add_argument(
         "--input_path",
         type=Path,
@@ -232,6 +251,20 @@ if __name__ == "__main__":
         default="advancing_front",
         choices=["advancing_front", "poisson"],
         help="Meshing method. Default: advancing_front.",
+    )
+    parser.add_argument(
+        "--meshing",
+        action=argparse.BooleanOptionalAction,
+        required=False,
+        default=True,
+        help="Run meshing creation. Default: True. ",
+    )
+    parser.add_argument(
+        "--rendering",
+        action=argparse.BooleanOptionalAction,
+        required=False,
+        default=True,
+        help="Run depth maps rendering. Default: True. ",
     )
     parser.add_argument(
         "--qrcode_detection",
