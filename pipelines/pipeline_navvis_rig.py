@@ -17,7 +17,67 @@ from scantools.scanners.navvis.camera_tiles import TileFormat
 TILE_CHOICES = sorted([attr.name.split("_")[1] for attr in TileFormat])
 
 description = """
-ToDo...
+Converts Navvis data to Lamar/Capture format exported as rig, including meshing,
+depth maps rendering, and QR code detection.
+
+**Input Parameters**
+* The input path for the data to be processed. Example:
+
+    datasets_proc/                               (--input_path "datasets_proc/")
+    ├── 2023-12-08_10.51.38
+    ├── 2023-12-15_15.45.51
+    └── 2023-12-15_15.58.10
+
+* The tile format. Default: "3x3".
+
+* The output path where processed data will be saved. Defaults to the
+    current working directory. Example:
+
+    pipeline_output/                          (--output_path "pipeline_output/")
+    └── datasets_proc/
+        └── sessions
+            ├── 2023-12-08_10.51.38
+            ├── 2023-12-15_15.45.51
+            └── 2023-12-15_15.58.10
+                ├── proc
+                │   ├── meshes
+                │   │   ├── mesh.ply
+                │   │   └── mesh_simplified.ply
+                │   └── qrcodes
+                │       ├── images_undistr
+                │       ├── qr_map_filtered_by_area.txt
+                │       └── qr_map.txt
+                ├── raw_data
+                │   ├── images_undistr_3x3
+                │   ├── LUT
+                │   ├── render
+                │   └── pointcloud.ply
+                ├── bt.txt
+                ├── depths.txt
+                ├── images.txt
+                ├── pointclouds.txt
+                ├── rigs.txt
+                ├── sensors.txt
+                ├── trajectories.txt
+                └── wifi.txt
+
+1. **Mesh Generation**
+We create two meshes: * full size (mesh.ply), and * simplified one
+(mesh_simplified.ply), from the provided point cloud.
+
+2. **Depth Map Generation**
+Generate depth maps using the previously computed mesh. This step, which can be
+computationally intensive, calculates the distance from the camera sensor to
+scene objects for each pixel. It can utilize either the default or simplified
+mesh, influencing the level of detail and computational complexity. We recommend
+to use the simplified mesh for large scene.
+
+3. **QR Code Detection**
+This step generates an additional output folder for processing QR codes in full
+undistorted images, not their tiled versions. It uses the previously computed
+mesh from the NavVis point cloud to determine the 3D position of detected QR
+code corners via raycasting. Outputs are saved in TXT (default) and optionally
+in JSON for readability.
 """
 
 
